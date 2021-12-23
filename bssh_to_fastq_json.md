@@ -3,6 +3,10 @@ Migrates FASTQs from BSSH to IAP/BB project context (assuming running from that 
 
 **Docker image for BSSH to FASTQ JSON tool:** shasson/bssh2bcljson: latest<br>
 
+# CWL for this tool can be found [here]()
+
+# pipeline diagrams to create a pipeline using both the bssh_to_fastq_json and bssh2icav2 tools can be found [here](), [here](), and [here]()
+
 **How to get a BSSH token?**
 After authenticating using BS CLI (https://developer.basespace.illumina.com/docs/content/documentation/cli/cli-overview#Authenticate) you can get the access token from your config file using the following command
  ```less ~/.basespace/default.cfg | grep 'accessToken'```
