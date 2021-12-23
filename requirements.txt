@@ -1,4 +1,4 @@
 aws
-boto
+boto3
 pandas
 requests

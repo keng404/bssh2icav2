@@ -219,10 +219,10 @@ def main():
 		raise ValueError(f"No files to download for {input_json}")
 
 # for each file in input JSON, create data + expose temporary AWS creds
-	for datum in data:
-		foi = datum['path'].split('/')[-1]
+	for files in data:
+		foi = files['path'].split('/')[-1]
 		foi_md5 = f"{foi}.md5sum"
-		download_url = datum['url']
+		download_url = files['url']
 
 	# download data from BSSH
 		metadata = {}
@@ -250,13 +250,19 @@ def main():
 		creds = get_temporary_credentials(my_api_key,project_name, foi_id)
 		set_temp_credentials(creds)
 		upload_file(foi,creds)
+
 	# confirm md5sum
 		s3_uri_split = creds['rcloneTempCredentials']['filePathPrefix'].split('/')
 		bucketname = s3_uri_split[0]
 		key_prefix = "/".join(s3_uri_split[1:(len(s3_uri_split)-1)])
-		md5_confirmation = etagTomd5sum.confirm_md5sum(os.environ['AWS_ACCESS_KEY_ID'],os.environ['AWS_SECRET_ACCESS_KEY'], foi, bucketname, key_prefix)
+		md5_confirmation = etagTomd5sum.confirm_md5sum(foi, bucketname, key_prefix)
 		if md5_confirmation is False:
 			raise ValueError(f"Issue confirming md5sum for {foi}")
+	# remove file and md5sum file once we've confirmed the checksums 
+		remove_file = "rm -rf " + foi
+		os.system(remove_file)
+		remove_md5_file = "rm -rf " + foi_md5
+		os.system(remove_md5_file)
 	#################
 if __name__ == '__main__':
 	main()

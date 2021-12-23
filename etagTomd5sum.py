@@ -1,5 +1,15 @@
-import boto
 import hashlib
+import subprocess
+import os
+
+def md5_checksum(filename):
+    m = hashlib.md5()
+    with open(filename, 'rb') as f:
+        for data in iter(lambda: f.read(1024 * 1024), b''):
+            m.update(data)
+   
+    return m.hexdigest()
+
 def etag_checksum(filename, chunk_size=8 * 1024 * 1024):
     md5s = []
     if os.path.getsize(filename) < chunk_size:
@@ -15,7 +25,7 @@ def etag_checksum(filename, chunk_size=8 * 1024 * 1024):
 
 
 def etag_compare(filename, etag):
-    et = etag[1:-1]  # strip quotes
+    et = etag
     print('et', et)
     if '-' in et and et == etag_checksum(filename):
         return True
@@ -24,18 +34,15 @@ def etag_compare(filename, etag):
     return False
 
 
-def confirm_md5sum(s3_accesskey,s3_secret,filename,bucket_name,your_key):
-    session = boto3.Session(
-        aws_access_key_id=s3_accesskey,
-        aws_secret_access_key=s3_secret
-    )
-    s3 = session.client('s3')
-    obj_dict = s3.get_object(Bucket=bucket_name, Key=your_key)
-
-    etag = (obj_dict['ETag'])
+def confirm_md5sum(filename,bucket_name,your_key):
+    aws_command = f"aws s3api head-object --bucket {bucket_name} --key {your_key} --query ETag --output text"
+    lookup = subprocess.run(aws_command, shell=True, stdout=subprocess.PIPE)
+    subprocess_return = lookup.stdout.decode('utf-8').strip('\n').strip("\"")
+    etag = subprocess_return
     print('etag', etag)
 
     validation = etag_compare(filename, etag)
     print(validation)
     etag_checksum(filename, chunk_size=8 * 1024 * 1024)
     return validation
+
