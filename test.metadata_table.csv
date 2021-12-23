@@ -1,0 +1,5 @@
+originalFilename,newFilename
+Undetermined_S0_L001_R1_001.fastq.gz,my_test_fastq.S0_L001_R1_001.fastq.gz
+Undetermined_S0_L001_R2_001.fastq.gz,my_test_fastq.S0_L001_R2_001.fastq.gz
+Undetermined_S0_L002_R1_001.fastq.gz,my_test_fastq.S0_L002_R1_001.fastq.gz
+Undetermined_S0_L002_R2_001.fastq.gz,my_test_fastq.S0_L002_R2_001.fastq.gz

@@ -1,0 +1,4 @@
+aws
+boto
+pandas
+requests
