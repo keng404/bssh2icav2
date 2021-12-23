@@ -1,7 +1,7 @@
 # BSSH FASTQs to JSON
 Migrates FASTQs from BSSH to IAP/BB project context (assuming running from that platform)
 
-**Docker image for BSSH to FASTQ JSON tool:** shasson/bssh2bcljson: latest<br>
+**Docker image for BSSH to FASTQ JSON tool:** shasson/bssh2bcljson:latest<br>
 
 # CWL for this tool can be found [here](https://github.com/keng404/bssh2icav2/blob/master/bssh_to_fastq_json.cwl)
 
