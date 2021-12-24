@@ -3,13 +3,49 @@ from requests.structures import CaseInsensitiveDict
 import pprint
 from pprint import pprint
 import json
+import hashlib
+import subprocess
 import os
 import etagTomd5sum
 import argparse
 import re
 import pandas as pd
+import boto3
+from botocore.exceptions import ClientError
+import logging
 import sys
+##########
 
+def md5_checksum(filename):
+    m = hashlib.md5()
+    with open(filename, 'rb') as f:
+        for data in iter(lambda: f.read(1024 * 1024), b''):
+            m.update(data)
+   
+    return m.hexdigest()
+
+def etag_checksum(filename, chunk_size=8 * 1024 * 1024):
+    md5s = []
+    if os.path.getsize(filename) < chunk_size:
+        with open(filename, 'rb') as f:
+            md5s.append(hashlib.md5(f.read()))
+    else:
+        with open(filename, 'rb') as f:
+            for data in iter(lambda: f.read(chunk_size), b''):
+                md5s.append(hashlib.md5(data).digest())
+    m = hashlib.md5(b"".join(md5s))
+    print('{}-{}'.format(m.hexdigest(), len(md5s)))
+    return '{}-{}'.format(m.hexdigest(), len(md5s))
+
+
+def etag_compare(filename, etag):
+    if '-' in etag and etag == etag_checksum(filename):
+        return True
+    if '-' not in etag and etag == md5_checksum(filename):
+        return True
+    return False
+
+#############
 ICA_BASE_URL = "https://ica.illumina.com/ica"
 
 
@@ -142,14 +178,53 @@ def get_md5_sum(filename):
 	os.system(command_str)
 	return print(f"Computed md5 sum for {filename}")
 
+def create_aws_service_object(aws_service_name,credential_json):
+   required_aws_obj = boto3.client(              
+       aws_service_name,
+       aws_access_key_id=credential_json['rcloneTempCredentials']['config']['access_key_id'],
+       aws_secret_access_key=credential_json['rcloneTempCredentials']['config']['secret_access_key'],
+       aws_session_token=credential_json['rcloneTempCredentials']['config']['session_token'],
+       region_name = credential_json['rcloneTempCredentials']['config']['region']
+   )
+   return required_aws_obj
+
 def upload_file(filename,credential_json):
-	command_base = ["aws", "s3","cp"]
-	command_base.append(filename)
-	s3_uri = credential_json['rcloneTempCredentials']['filePathPrefix']
-	command_base.append(f"s3://{s3_uri}")
-	command_str = " ".join(command_base)
-	os.system(command_str)
+	try:
+		s3 = create_aws_service_object('s3',credential_json)
+		s3_uri_split = credential_json['rcloneTempCredentials']['filePathPrefix'].split('/')
+		bucket = s3_uri_split[0]
+		object_name = "/".join(s3_uri_split[1:(len(s3_uri_split))])
+		response = s3.upload_file(filename, bucket, object_name)
+	except ClientError as e:
+		logging.error(e)
+ 	#command_base = ["aws", "s3","cp"]
+	#command_base.append(filename)
+	#s3_uri = credential_json['rcloneTempCredentials']['filePathPrefix']
+	#command_base.append(f"s3://{s3_uri}")
+	#command_str = " ".join(command_base)
+	#set_temp_credentials(credential_json)
+	#subprocess.run(command_str, shell=True, stdout=subprocess.PIPE)
 	return print(f"Uploaded {filename}")
+
+def confirm_md5sum(filename,bucket_name,your_key,credential_json):
+	s3 = create_aws_service_object('s3',credential_json)
+	s3_uri_split = credential_json['rcloneTempCredentials']['filePathPrefix'].split('/')
+	bucket_name = s3_uri_split[0]
+	your_key = "/".join(s3_uri_split[1:(len(s3_uri_split))])
+	obj_dict = s3.head_object(Bucket=bucket_name, Key=your_key)
+
+	etag = (obj_dict['ETag']).strip("\"")
+	#set_temp_credentials(credential_json)
+	#aws_command = f"aws s3api head-object --bucket {bucket_name} --key {your_key} --query ETag --output text"
+	#lookup = subprocess.run(aws_command, shell=True, stdout=subprocess.PIPE)
+	#subprocess_return = lookup.stdout.decode('utf-8').strip('\n').strip("\"")
+	#etag = subprocess_return
+	print('etag', etag)
+
+	validation = etag_compare(filename, etag)
+	print(validation)
+	etag_checksum(filename, chunk_size=8 * 1024 * 1024)
+	return validation
 ################
 ### rename files metadata
 def load_metadata_table(metadata_table):
@@ -245,17 +320,20 @@ def main():
 	# upload file and md5sum to ICA
 		creds = get_temporary_credentials(my_api_key,project_name, foi_md5_id)
 		set_temp_credentials(creds)
-		upload_file(foi_md5_id, creds)
+		upload_file(foi_md5,creds)
 
 		creds = get_temporary_credentials(my_api_key,project_name, foi_id)
 		set_temp_credentials(creds)
 		upload_file(foi,creds)
 
 	# confirm md5sum
+		#print(creds['rcloneTempCredentials']['filePathPrefix'])
 		s3_uri_split = creds['rcloneTempCredentials']['filePathPrefix'].split('/')
 		bucketname = s3_uri_split[0]
-		key_prefix = "/".join(s3_uri_split[1:(len(s3_uri_split)-1)])
-		md5_confirmation = etagTomd5sum.confirm_md5sum(foi, bucketname, key_prefix)
+		key_prefix = "/".join(s3_uri_split[1:(len(s3_uri_split))])
+		#print(bucketname)
+		#print(key_prefix)
+		md5_confirmation = confirm_md5sum(foi, bucketname, key_prefix,creds)
 		if md5_confirmation is False:
 			raise ValueError(f"Issue confirming md5sum for {foi}")
 	# remove file and md5sum file once we've confirmed the checksums 
