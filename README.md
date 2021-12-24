@@ -1,5 +1,5 @@
 # bssh2icav2
-- Takes an input JSON ( see example [here]() ) from the [bssh_to_fastq_json tool](https://github.com/keng404/bssh2icav2/blob/master/bssh_to_fastq_json.md), renames files based on the contents of the metadata_table ( see example [here](https://github.com/keng404/bssh2icav2/blob/master/test.metadata_table.csv) ) and transfers to your ICA project
+- Takes an input JSON ( see example [here](https://github.com/keng404/bssh2icav2/blob/master/272296024.fastq.signedurl.json) ) from the [bssh_to_fastq_json tool](https://github.com/keng404/bssh2icav2/blob/master/bssh_to_fastq_json.md), renames files based on the contents of the metadata_table ( see example [here](https://github.com/keng404/bssh2icav2/blob/master/test.metadata_table.csv) ) and transfers to your ICA project
 - Performs a checksum check based on the file downloaded from BSSH and what is uploaded to ICAv2
 
 # CWL for the [bssh2icav2 tool](https://github.com/keng404/bssh2icav2/blob/master/bssh2icav2.cwl)
