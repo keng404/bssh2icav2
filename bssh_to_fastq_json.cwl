@@ -40,4 +40,3 @@ outputs:
 baseCommand:
 - python
 - /git/bssh_to_gds/scripts/get_bsshproject_fastq_urls.py
-- --debug
