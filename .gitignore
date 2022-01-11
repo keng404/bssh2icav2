@@ -1,2 +1,5 @@
 *log
 *pycache*
+*DS_Store*
+*json
+*filter

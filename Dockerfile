@@ -14,4 +14,5 @@ COPY etagTomd5sum.py ${STAGEDIR}/
 COPY 272296024.fastq.signedurl.json ${STAGEDIR}/
 COPY test.metadata_table.csv ${STAGEDIR}/
 COPY etagTomd5sum.py /usr/local/lib/python3.7/site-packages/
+COPY download_and_upload_run_to_ICAv2.py ${STAGEDIR}/
 ENV PATH $PATH:${STAGEDIR}

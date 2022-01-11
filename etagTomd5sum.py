@@ -14,14 +14,19 @@ def etag_checksum(filename, chunk_size=8 * 1024 * 1024):
     md5s = []
     if os.path.getsize(filename) < chunk_size:
         with open(filename, 'rb') as f:
-            md5s.append(hashlib.md5(f.read()))
+            m = hashlib.md5(f.read())
+            md5s.append(m)
+        print('{}'.format(m.hexdigest()))
+        my_etag = '{}'.format(m.hexdigest())
     else:
         with open(filename, 'rb') as f:
             for data in iter(lambda: f.read(chunk_size), b''):
                 md5s.append(hashlib.md5(data).digest())
-    m = hashlib.md5(b"".join(md5s))
-    print('{}-{}'.format(m.hexdigest(), len(md5s)))
-    return '{}-{}'.format(m.hexdigest(), len(md5s))
+                print(md5s)
+        m = hashlib.md5(b"".join(md5s))
+        print('{}-{}'.format(m.hexdigest(), len(md5s)))
+        my_etag =  '{}-{}'.format(m.hexdigest(), len(md5s))
+    return my_etag
 
 
 def etag_compare(filename, etag):
@@ -35,9 +40,9 @@ def etag_compare(filename, etag):
 
 
 def confirm_md5sum(filename,bucket_name,your_key):
-    aws_command = f"aws s3api head-object --bucket {bucket_name} --key {your_key} --query ETag --output text"
-    lookup = subprocess.run(aws_command, shell=True, stdout=subprocess.PIPE)
-    subprocess_return = lookup.stdout.decode('utf-8').strip('\n').strip("\"")
+    #aws_command = f"aws s3api head-object --bucket {bucket_name} --key {your_key} --query ETag --output text"
+    #lookup = subprocess.run(aws_command, shell=True, stdout=subprocess.PIPE)
+    #subprocess_return = lookup.stdout.decode('utf-8').strip('\n').strip("\"")
     etag = subprocess_return
     print('etag', etag)
 
@@ -45,4 +50,3 @@ def confirm_md5sum(filename,bucket_name,your_key):
     print(validation)
     etag_checksum(filename, chunk_size=8 * 1024 * 1024)
     return validation
-
