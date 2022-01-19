@@ -14,6 +14,14 @@ import boto3
 from botocore.exceptions import ClientError
 import logging
 import sys
+import time
+from time import sleep
+import random
+#import logging
+#from logging import Logger
+#logging.getLogger('backoff').addHandler(logging.StreamHandler())
+import retry_requests_decorator
+from retry_requests_decorator import request_with_retry,fatal_code
 ##########
 
 def md5_checksum(filename):
@@ -52,8 +60,7 @@ def etag_compare(filename, etag):
 #############
 ICA_BASE_URL = "https://ica.illumina.com/ica"
 
-
-def get_project_id(api_key, project_name):
+def get_project_id(api_key, project_name,max_retries = 3):
     projects = []
     pageOffset = 0
     pageSize = 1000
@@ -66,44 +73,89 @@ def get_project_id(api_key, project_name):
     headers['Accept'] = 'application/vnd.illumina.v3+json'
     headers['Content-Type'] = 'application/vnd.illumina.v3+json'
     headers['X-API-Key'] = api_key
+    headers['Connection'] = 'close'
+    headers['User-Agent'] = "Mozilla/5.0 (Windows NT 6.1; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36"
+    project_id = None
     try:
-        projectPagedList = requests.get(full_url, headers=headers)
-        totalRecords = projectPagedList.json()['totalItemCount']
-        while page_number*pageSize <  totalRecords:
+        #request_params = {"method": "get", "url": full_url,"headers": headers}
+        #projectPagedList = request_with_retry(**request_params)
+        #sleep(random.uniform(1, 3))
+        projectPagedList = None
+        response_code = 201
+        num_tries = 0
+        #projectPagedList = requests.get(full_url, headers=headers)
+        while response_code != 200 and num_tries < max_retries:
+            num_tries += 1
+            sleep(random.uniform(1, 3))
+            if num_tries > 1:
+                print(f"NUM_TRIES:\t{num_tries}\tLooking for project {project_name}")
             projectPagedList = requests.get(full_url, headers=headers)
+            response_code = projectPagedList.status_code
+            projectPagedListResponse = projectPagedList.json()
+        if 'totalItemCount' in projectPagedListResponse.keys():
+            totalRecords = projectPagedList.json()['totalItemCount']
+            while page_number*pageSize <  totalRecords:
+                endpoint = f"/api/projects?search={project_name}&includeHiddenProjects=true&pageOffset={number_of_rows_to_skip}&pageSize={pageSize}"
+                full_url = api_base_url + endpoint
+                #request_params = {"method": "get", "url": full_url, "headers": headers}
+                #projectPagedList = request_with_retry(**request_params)
+                sleep(random.uniform(1, 3))
+                projectPagedList = requests.get(full_url, headers=headers)
+                for project in projectPagedList.json()['items']:
+                    projects.append({"name":project['name'],"id":project['id']})
+                page_number += 1
+                number_of_rows_to_skip = page_number * pageSize
+        else:
             for project in projectPagedList.json()['items']:
-                projects.append({"name":project['name'],"id":project['id']})
-            page_number += 1
-            number_of_rows_to_skip = page_number * pageSize
+                projects.append({"name": project['name'], "id": project['id']})
     except:
         raise ValueError(f"Could not get project_id for project: {project_name}")
     if len(projects)>1:
         raise ValueError(f"There are multiple projects that match {project_name}")
     else:
-        return projects[0]['id']
+        project_id = projects[0]['id']
+        return project_id
 
-def list_data(api_key,sample_query,project_id):
+def list_data(api_key,sample_query,project_id=None, project_name=None,max_retries = 3):
     filepath_search = False
     if re.search("/",sample_query[0]) is not None:
         filepath_search = True
-    sample_query = [re.sub("/", "%2F", x) for x in sample_query][0]
+        sample_query = [re.sub("/", "%2F", x) for x in sample_query][0]
+    else:
+        sample_query = sample_query[0]
+    if project_id is None:
+        project_id = get_project_id(api_key, project_name)
     datum = []
     pageOffset = 0
     pageSize = 1000
     page_number = 0
     number_of_rows_to_skip = 0
     api_base_url = ICA_BASE_URL + "/rest"
-    if filepath_search is true:
+    if filepath_search is True:
         endpoint = f"/api/projects/{project_id}/data?filePath={sample_query}&filenameMatchMode=FUZZY&filePathMatchMode=FULL_CASE_INSENSITIVE&pageOffset={pageOffset}&pageSize={pageSize}"
     else:
         endpoint = f"/api/projects/{project_id}/data?filename={sample_query}&filenameMatchMode=FUZZY&filePathMatchMode=STARTS_WITH_CASE_INSENSITIVE&pageOffset={pageOffset}&pageSize={pageSize}"
     full_url = api_base_url + endpoint	############ create header
+    #print(f"FULL_URL:\t{full_url}")
     headers = CaseInsensitiveDict()
     headers['Accept'] = 'application/vnd.illumina.v3+json'
     headers['Content-Type'] = 'application/vnd.illumina.v3+json'
     headers['X-API-Key'] = api_key
+    headers['Connection'] = 'close'
+    headers['User-Agent'] = "Mozilla/5.0 (Windows NT 6.1; Win64; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36"
     try:
-        projectDataPagedList = requests.get(full_url, headers=headers)
+        #request_params = {"method": "get", "url": full_url,"headers": headers}
+        #projectDataPagedList = request_with_retry(**request_params)
+        projectDataPagedList = None
+        response_code = 201
+        num_tries = 0
+        while response_code != 200 and num_tries < max_retries:
+            num_tries += 1
+            if num_tries > 1:
+                print(f"NUM_TRIES:\t{num_tries}\tLooking for data in the project {project_name}")
+            sleep(random.uniform(1, 3))
+            projectDataPagedList = requests.get(full_url, headers=headers)
+            response_code = projectDataPagedList.status_code
         if 'totalItemCount' in projectDataPagedList.json().keys():
             totalRecords = projectDataPagedList.json()['totalItemCount']
             while page_number*pageSize <  totalRecords:
@@ -112,18 +164,30 @@ def list_data(api_key,sample_query,project_id):
                 else:
                     endpoint = f"/api/projects/{project_id}/data?filename={sample_query}&filenameMatchMode=FUZZY&filePathMatchMode=STARTS_WITH_CASE_INSENSITIVE&pageOffset={number_of_rows_to_skip}&pageSize={pageSize}"
                 full_url = api_base_url + endpoint  ############ create header
-                projectDataPagedList = requests.get(full_url, headers=headers)
+                #request_params = {"method": "get", "url": full_url, "headers": headers}
+                #projectDataPagedList = request_with_retry(**request_params)
+                num_tries = 0
+                projectDataPagedList = None
+                while projectDataPagedList is None and num_tries < max_retries:
+                    num_tries += 1
+                    sleep(random.uniform(1, 3))
+                    projectDataPagedList = requests.get(full_url, headers=headers)
                 for projectData in projectDataPagedList.json()['items']:
                         datum.append({"name":projectData['data']['details']['name'],"id":projectData['data']['id'],"path":projectData['data']['details']['path']})
                 page_number += 1
                 number_of_rows_to_skip = page_number * pageSize
+        else:
+            for projectData in projectDataPagedList.json()['items']:
+                datum.append({"name": projectData['data']['details']['name'], "id": projectData['data']['id'],"path": projectData['data']['details']['path']})
+
     except:
         raise ValueError(f"Could not get results for project: {project_id} looking for filename: {sample_query}")
     return datum
 
 # create data in ICA and retrieve back data ID
-def create_data(api_key,project_name, filename, data_type, folder_id=None, format_code=None,filepath=None):
-    project_id = get_project_id(api_key, project_name)
+def create_data(api_key,project_name, filename, data_type, folder_id=None, format_code=None,filepath=None,project_id=None,max_retries = 5):
+    if project_id is None:
+        project_id = get_project_id(api_key, project_name)
     api_base_url = ICA_BASE_URL + "/rest"
     endpoint = f"/api/projects/{project_id}/data"
     full_url = api_base_url + endpoint
@@ -131,7 +195,9 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     headers = CaseInsensitiveDict()
     headers['Accept'] = 'application/vnd.illumina.v3+json'
     headers['Content-Type'] = 'application/vnd.illumina.v3+json'
+    headers['Connection'] = 'close'
     headers['X-API-Key'] = api_key
+    headers['User-Agent'] = "Mozilla/5.0 (Windows NT 6.1; Win64; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36"
     ########
     payload = {}
     payload['name'] = filename
@@ -142,17 +208,31 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     if data_type not in ["FILE", "FOLDER"]:
         raise ValueError("Please enter a correct data type to create. It can be FILE or FOLDER.Exiting\n")
     payload['dataType'] = data_type
-    if format_code is not None:
-        payload['formatCode'] = format_code
-    response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+    ######## let's not specify format type
+    #if format_code is not None:
+    #    payload['formatCode'] = format_code
+    ################
+    #request_params = {"method": "post", "url": full_url, "headers": headers,"data": json.dumps(payload)}
+    #response = request_with_retry(**request_params)
+    response_code = 404
+    response = None
+    num_tries = 0
+    while response_code != 201 and num_tries < max_retries:
+        num_tries += 1
+        if num_tries > 1:
+            print(f"NUM_TRIES:\t{num_tries}\tTrying to create data in {project_name}")
+        sleep(random.uniform(1, 10))
+        response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+        response_code = response.status_code
     if response.status_code not in [201, 400]:
         pprint(json.dumps(response.json()),indent=4)
         raise ValueError(f"Could not create data {filename}")
     return response.json()['data']['id']
 
 ### obtain temporary AWS credentials
-def get_temporary_credentials(api_key,project_name,data_id):
-    project_id = get_project_id(api_key, project_name)
+def get_temporary_credentials(api_key,project_name,data_id,project_id=None,max_retries = 5):
+    if project_id is None:
+        project_id = get_project_id(api_key, project_name)
     api_base_url = ICA_BASE_URL + "/rest"
     endpoint = f"/api/projects/{project_id}/data/{data_id}:createTemporaryCredentials"
     full_url = api_base_url + endpoint
@@ -161,10 +241,23 @@ def get_temporary_credentials(api_key,project_name,data_id):
     headers['Accept'] = 'application/vnd.illumina.v3+json'
     headers['Content-Type'] = 'application/vnd.illumina.v3+json'
     headers['X-API-Key'] = api_key
+    headers['Connection'] = 'close'
+    headers['User-Agent'] = "Mozilla/5.0 (Windows NT 6.1; Win64; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/72.0.3626.119 Safari/537.36"
     payload = {}
     payload['credentialsFormat'] = "RCLONE"
     ########
-    response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+    #request_params = {"method": "post", "url": full_url, "headers": headers,"data": json.dumps(payload)}
+    #response = request_with_retry(**request_params)
+    response = None
+    response_code = 404
+    num_tries = 0
+    while response_code != 200 and num_tries < max_retries:
+        num_tries += 1
+        if num_tries > 1:
+            print(f"NUM_TRIES:\t{num_tries}\tTryint to get creds for {project_name}")
+        sleep(random.uniform(1, 3))
+        response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+        response_code = response.status_code
     if response.status_code != 200:
         pprint(json.dumps(response.json()),indent=4)
         raise ValueError(f"Could not get temporary credentials for {data_id}")
@@ -304,7 +397,16 @@ def main():
         data = json.load(f)
     if len(data) < 1:
         raise ValueError(f"No files to download for {input_json}")
+
+    if project_id is None:
+        project_id = get_project_id(my_api_key,project_name)
+
+    data_dict = {}
     projectdata_results = list_data(my_api_key,["/" + folder_name+"/"],project_id)
+    for idx,i in enumerate(projectdata_results):
+        if i['path']  not in data_dict.keys():
+            data_dict[i['path']] = i
+
 # for each file in input JSON, create data + expose temporary AWS creds
     for files in data:
         path_split = files['path'].split('/')
@@ -319,34 +421,53 @@ def main():
             if path_join != "":
                paths.append(path_join + "/")
         for p in paths:
-            print(f"Looking for path:\t{p}\n")
-            projectdata_results = list_data(my_api_key, [p.split('/')[-1]], project_id)
-            num_hits,folder_id = does_folder_exist(p,projectdata_results)
-            print(f"NUM_HITS: {num_hits}\tFOLDER_ID: {folder_id}\n")
+            # avoid API calls if we've already looked the folder in the project
+            if "/" + p  not in data_dict.keys():
+                print(f"Looking for path:\t{p}\n")
+                projectdata_results = list_data(my_api_key, ["/" + p], project_id)
+                pprint(projectdata_results,indent = 4)
+                for idx, i in enumerate(projectdata_results):
+                    if i['path']  not in data_dict.keys():
+                        data_dict[i['path']] = i
+                num_hits,folder_id = does_folder_exist("/"+p,projectdata_results)
+                print(f"NUM_HITS: {num_hits}\tFOLDER_ID: {folder_id}\n")
+            else:
+                print(f"Using lookup table\n")
+                num_hits,folder_id = does_folder_exist("/"+p,[data_dict["/"+p]])
+                print(f"NUM_HITS: {num_hits}\tFOLDER_ID: {folder_id}\n")
     # Check if folder exists in ICA project
         # if not, then create
-            if len(projectdata_results) == 0 or num_hits == 0:
-                print(f"Generating folder for {p} \n")
-                folder_id = create_data(my_api_key,project_name, p.split('/')[-2], "FOLDER", filepath = p)
+            if folder_id is None and num_hits == 0:
+                ## ensure we are adding to the appropriate parent folder
+                root_folder = [""]
+                new_folder_name = p.split('/')[-2]
+                folder_create_split = p.split('/')
+                for i in range(len(folder_create_split)-2):
+                    root_folder.append(folder_create_split[i])
+                root_folder_path = "/".join(root_folder)
+                root_folder_path = root_folder_path  + "/"
+                print(f"Generating folder for {new_folder_name} in {root_folder_path} \n")
+                folder_id = create_data(my_api_key,project_name, new_folder_name, "FOLDER", filepath = root_folder_path,project_id=project_id)
+                data_dict[root_folder_path + new_folder_name + "/"] = {"name":new_folder_name,"path":root_folder_path + new_folder_name + "/","id":folder_id}
             if folder_id is None:
                 raise ValueError(f"Cannot find appropriate folder id for {p} in {project_name}")
 
         foi = files['path'].split('/')[-1]
         foi_md5 = f"{foi}.md5sum"
         download_url = files['url']
-        print(folder_id)
+        #print(folder_id)
     # download data from BSSH
         metadata = {}
         if args.metadata_table is not None:
             metadata = return_filemetadata(args.metadata_table)
         ### add in logic to  on whether to rename FASTQs ####
         if args.metadata_table is None or foi not in metadata.keys():
-            foi_id  = create_data(my_api_key,project_name, foi, "FILE", folder_id=folder_id)
-            foi_md5_id = create_data(my_api_key,project_name, foi_md5, "FILE", folder_id=folder_id)
+            foi_id  = create_data(my_api_key,project_name, foi, "FILE", folder_id=folder_id,project_id=project_id)
+            foi_md5_id = create_data(my_api_key,project_name, foi_md5, "FILE", folder_id=folder_id,project_id=project_id)
             download_data_from_url(download_url,output_name=foi)
         else:
-            foi_id  = create_data(my_api_key,project_name, metadata[foi], "FILE", folder_id=folder_id)
-            foi_md5_id = create_data(my_api_key,project_name, metadata[foi]+".md5sum", "FILE", folder_id=folder_id)
+            foi_id  = create_data(my_api_key,project_name, metadata[foi], "FILE", folder_id=folder_id,project_id=project_id)
+            foi_md5_id = create_data(my_api_key,project_name, metadata[foi]+".md5sum", "FILE", folder_id=folder_id,project_id=project_id)
             download_data_from_url(download_url, output_name=metadata[foi])
             foi = metadata[foi]
             foi_md5 = f"{foi}.md5sum"
@@ -354,12 +475,12 @@ def main():
         get_md5_sum(foi)
 
     # upload file and md5sum to ICA
-        creds = get_temporary_credentials(my_api_key,project_name, foi_md5_id)
-        set_temp_credentials(creds)
+        creds = get_temporary_credentials(my_api_key,project_name, foi_md5_id,project_id=project_id)
+        #set_temp_credentials(creds)
         upload_file(foi_md5,creds)
 
-        creds = get_temporary_credentials(my_api_key,project_name, foi_id)
-        set_temp_credentials(creds)
+        creds = get_temporary_credentials(my_api_key,project_name, foi_id,project_id=project_id)
+        #set_temp_credentials(creds)
         upload_file(foi,creds)
 
     # confirm md5sum
@@ -378,5 +499,16 @@ def main():
         remove_md5_file = "rm -rf " + foi_md5
         os.system(remove_md5_file)
     #################
+    # write out parameter options summary
+    transfer_options_summary = "transfer_options_summary.json"
+    transfer_options = {}
+    transfer_options['project_name'] = project_name
+    transfer_options['project_id'] = project_id
+    transfer_options['transfer_json'] = args.input_json
+    transfer_options['root_output_folder'] = folder_name
+    with open(transfer_options_summary, "w") as f:
+        for line in json.dumps(transfer_options, indent=4, sort_keys=True).split("\n"):
+            print(line, file=f)
+    print('All done!\n\n')
 if __name__ == '__main__':
     main()
