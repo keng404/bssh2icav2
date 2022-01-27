@@ -86,7 +86,7 @@ def get_project_id(api_key, project_name,max_retries = 3):
         #projectPagedList = requests.get(full_url, headers=headers)
         while response_code != 200 and num_tries < max_retries:
             num_tries += 1
-            sleep(random.uniform(1, 3))
+            #sleep(random.uniform(1, 3))
             if num_tries > 1:
                 print(f"NUM_TRIES:\t{num_tries}\tLooking for project {project_name}")
             projectPagedList = requests.get(full_url, headers=headers)
@@ -99,7 +99,7 @@ def get_project_id(api_key, project_name,max_retries = 3):
                 full_url = api_base_url + endpoint
                 #request_params = {"method": "get", "url": full_url, "headers": headers}
                 #projectPagedList = request_with_retry(**request_params)
-                sleep(random.uniform(1, 3))
+                #sleep(random.uniform(1, 3))
                 projectPagedList = requests.get(full_url, headers=headers)
                 for project in projectPagedList.json()['items']:
                     projects.append({"name":project['name'],"id":project['id']})
@@ -153,7 +153,7 @@ def list_data(api_key,sample_query,project_id=None, project_name=None,max_retrie
             num_tries += 1
             if num_tries > 1:
                 print(f"NUM_TRIES:\t{num_tries}\tLooking for data in the project {project_name}")
-            sleep(random.uniform(1, 3))
+            #sleep(random.uniform(1, 3))
             projectDataPagedList = requests.get(full_url, headers=headers)
             response_code = projectDataPagedList.status_code
         if 'totalItemCount' in projectDataPagedList.json().keys():
@@ -170,7 +170,7 @@ def list_data(api_key,sample_query,project_id=None, project_name=None,max_retrie
                 projectDataPagedList = None
                 while projectDataPagedList is None and num_tries < max_retries:
                     num_tries += 1
-                    sleep(random.uniform(1, 3))
+                    #sleep(random.uniform(1, 3))
                     projectDataPagedList = requests.get(full_url, headers=headers)
                 for projectData in projectDataPagedList.json()['items']:
                         datum.append({"name":projectData['data']['details']['name'],"id":projectData['data']['id'],"path":projectData['data']['details']['path']})
@@ -185,7 +185,7 @@ def list_data(api_key,sample_query,project_id=None, project_name=None,max_retrie
     return datum
 
 # create data in ICA and retrieve back data ID
-def create_data(api_key,project_name, filename, data_type, folder_id=None, format_code=None,filepath=None,project_id=None,max_retries = 5):
+def create_data(api_key,project_name, filename, data_type, folder_id=None, format_code=None,project_id=None,filepath=None,max_retries = 1):
     if project_id is None:
         project_id = get_project_id(api_key, project_name)
     api_base_url = ICA_BASE_URL + "/rest"
@@ -221,13 +221,22 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
         num_tries += 1
         if num_tries > 1:
             print(f"NUM_TRIES:\t{num_tries}\tTrying to create data in {project_name}")
-        sleep(random.uniform(1, 10))
-        response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+        #sleep(random.uniform(1, 10))
+        sleep(0.1)
+        response = requests.post(full_url, headers=headers, data=json.dumps(payload),verify=False)
         response_code = response.status_code
     if response.status_code not in [201, 400]:
-        pprint(json.dumps(response.json()),indent=4)
-        raise ValueError(f"Could not create data {filename}")
-    return response.json()['data']['id']
+        # if filepath exists, then check
+        if response.status_code in [409]:
+            print(f"File exists at {filepath}.\nChecking {project_id}")
+            fileresults = list_data(api_key, filepath, project_id)
+            for idx,i in enumerate(fileresults):
+                data_id = i['id']
+        else:
+            pprint(json.dumps(response.json()),indent=4)
+            raise ValueError(f"Could not create data {filename}")
+    data_id = response.json()['data']['id']
+    return data_id
 
 ### obtain temporary AWS credentials
 def get_temporary_credentials(api_key,project_name,data_id,project_id=None,max_retries = 5):
@@ -255,8 +264,9 @@ def get_temporary_credentials(api_key,project_name,data_id,project_id=None,max_r
         num_tries += 1
         if num_tries > 1:
             print(f"NUM_TRIES:\t{num_tries}\tTryint to get creds for {project_name}")
-        sleep(random.uniform(1, 3))
-        response = requests.post(full_url, headers=headers, data=json.dumps(payload))
+        #sleep(random.uniform(1, 3))
+        sleep(0.1)
+        response = requests.post(full_url, headers=headers, data=json.dumps(payload),verify=False)
         response_code = response.status_code
     if response.status_code != 200:
         pprint(json.dumps(response.json()),indent=4)
@@ -462,12 +472,12 @@ def main():
             metadata = return_filemetadata(args.metadata_table)
         ### add in logic to  on whether to rename FASTQs ####
         if args.metadata_table is None or foi not in metadata.keys():
-            foi_id  = create_data(my_api_key,project_name, foi, "FILE", folder_id=folder_id,project_id=project_id)
-            foi_md5_id = create_data(my_api_key,project_name, foi_md5, "FILE", folder_id=folder_id,project_id=project_id)
+            foi_id  = create_data(my_api_key,project_name, foi, "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] + foi )
+            foi_md5_id = create_data(my_api_key,project_name, foi_md5, "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] + foi_md5)
             download_data_from_url(download_url,output_name=foi)
         else:
-            foi_id  = create_data(my_api_key,project_name, metadata[foi], "FILE", folder_id=folder_id,project_id=project_id)
-            foi_md5_id = create_data(my_api_key,project_name, metadata[foi]+".md5sum", "FILE", folder_id=folder_id,project_id=project_id)
+            foi_id  = create_data(my_api_key,project_name, metadata[foi], "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] + metadata[foi] )
+            foi_md5_id = create_data(my_api_key,project_name, metadata[foi]+".md5sum", "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] +  metadata[foi]+".md5sum")
             download_data_from_url(download_url, output_name=metadata[foi])
             foi = metadata[foi]
             foi_md5 = f"{foi}.md5sum"
