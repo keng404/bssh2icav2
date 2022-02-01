@@ -217,6 +217,7 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     response_code = 404
     response = None
     num_tries = 0
+    data_id = None
     while response_code != 201 and num_tries < max_retries:
         num_tries += 1
         if num_tries > 1:
@@ -225,17 +226,18 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
         sleep(0.1)
         response = requests.post(full_url, headers=headers, data=json.dumps(payload),verify=False)
         response_code = response.status_code
+    if 'data' in response.json().keys():
+        data_id = response.json()['data']['id']
     if response.status_code not in [201, 400]:
         # if filepath exists, then check
         if response.status_code in [409]:
             print(f"File exists at {filepath}.\nChecking {project_id}")
-            fileresults = list_data(api_key, filepath, project_id)
+            fileresults = list_data(api_key, [ filepath ], project_id)
             for idx,i in enumerate(fileresults):
                 data_id = i['id']
         else:
             pprint(json.dumps(response.json()),indent=4)
             raise ValueError(f"Could not create data {filename}")
-    data_id = response.json()['data']['id']
     return data_id
 
 ### obtain temporary AWS credentials
@@ -378,6 +380,7 @@ def main():
     parser.add_argument('--input_json', default=None, type=str, help="input JSON listing files from BSSH to transfer")
     parser.add_argument('--metadata_table',  default=None, type=str, help="input metadata table for renaming convention")
     parser.add_argument('--api_key_file', default=None, type=str, help="file that contains API-Key")
+    parser.add_argument('--api_key', default=None, type=str, help="String that is the API-Key")
     args, extras = parser.parse_known_args()
 #############
     folder_name = "default"
@@ -395,10 +398,12 @@ def main():
     else:
         raise ValueError("Please provide ICA project name")
     my_api_key = None
-    if args.api_key_file is not None:
+    if args.api_key_file is not None and args.api_key is None:
         if os.path.isfile(args.api_key_file) is True:
             with open(args.api_key_file, 'r') as f:
                 my_api_key = str(f.read().strip("\n"))
+    if args.api_key is not None:
+        my_api_key = args.api_key
     if my_api_key is None:
         raise ValueError("Need API key")
 
