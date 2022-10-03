@@ -15,6 +15,7 @@ from botocore.exceptions import ClientError
 import logging
 import sys
 import time
+import datetime
 from time import sleep
 import random
 #import logging
@@ -185,7 +186,7 @@ def list_data(api_key,sample_query,project_id=None, project_name=None,max_retrie
     return datum
 
 # create data in ICA and retrieve back data ID
-def create_data(api_key,project_name, filename, data_type, folder_id=None, format_code=None,project_id=None,filepath=None,max_retries = 1):
+def create_data(api_key,project_name, filename, data_type, folder_id=None, format_code=None,project_id=None,filepath=None,max_retries = 10):
     if project_id is None:
         project_id = get_project_id(api_key, project_name)
     api_base_url = ICA_BASE_URL + "/rest"
@@ -201,8 +202,12 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     ########
     payload = {}
     payload['name'] = filename
+    fullname = filename
     if filepath is not None:
-        payload['folderPath'] = filepath
+        filepath_split = filepath.split('/')
+        if len(filepath_split) > 1:
+            payload['folderPath'] = filepath
+            fullname = filepath + filename
     if folder_id is not None:
         payload['folderId'] = folder_id
     if data_type not in ["FILE", "FOLDER"]:
@@ -218,24 +223,27 @@ def create_data(api_key,project_name, filename, data_type, folder_id=None, forma
     response = None
     num_tries = 0
     data_id = None
-    while response_code != 201 and num_tries < max_retries:
+    while (response_code != 201 and num_tries < max_retries) :
         num_tries += 1
         if num_tries > 1:
             print(f"NUM_TRIES:\t{num_tries}\tTrying to create data in {project_name}")
         #sleep(random.uniform(1, 10))
-        sleep(0.1)
+        sleep(1)
         response = requests.post(full_url, headers=headers, data=json.dumps(payload),verify=False)
         response_code = response.status_code
+        pprint(json.dumps(response.json()),indent=4)
     if 'data' in response.json().keys():
-        data_id = response.json()['data']['id']
-    if response.status_code not in [201, 400]:
+            data_id = response.json()['data']['id']
+    elif response.status_code not in [201, 400]:
         # if filepath exists, then check
         if response.status_code in [409]:
-            print(f"File exists at {filepath}.\nChecking {project_id}")
-            fileresults = list_data(api_key, [ filepath ], project_id)
+            print(f"File exists at {fullname}.\nChecking {project_id}")
+            sleep(5)
+            fileresults = list_data(api_key, [ fullname ], project_id)
             for idx,i in enumerate(fileresults):
-                data_id = i['id']
+                 data_id = i['id']
         else:
+            print(f"PATH:\t{filepath}\tFOLDER_ID:\t{folder_id}")
             pprint(json.dumps(response.json()),indent=4)
             raise ValueError(f"Could not create data {filename}")
     return data_id
@@ -267,7 +275,7 @@ def get_temporary_credentials(api_key,project_name,data_id,project_id=None,max_r
         if num_tries > 1:
             print(f"NUM_TRIES:\t{num_tries}\tTryint to get creds for {project_name}")
         #sleep(random.uniform(1, 3))
-        sleep(0.1)
+        sleep(1)
         response = requests.post(full_url, headers=headers, data=json.dumps(payload),verify=False)
         response_code = response.status_code
     if response.status_code != 200:
@@ -358,6 +366,14 @@ def does_folder_exist(folder_name,folder_results):
             num_hits = 1
             folder_id = result['id']
     return  num_hits,folder_id
+def does_file_exist(file_name,file_results):
+    num_hits = 0
+    file_id = None
+    for result_idx,result in enumerate(file_results):
+        if file_name == result['path']  is not None and re.search("fil", result['id']) is not None:
+            num_hits = 1
+            file_id = result['id']
+    return  num_hits,file_id
 
 ### rename files metadata
 def load_metadata_table(metadata_table):
@@ -381,8 +397,10 @@ def main():
     parser.add_argument('--metadata_table',  default=None, type=str, help="input metadata table for renaming convention")
     parser.add_argument('--api_key_file', default=None, type=str, help="file that contains API-Key")
     parser.add_argument('--api_key', default=None, type=str, help="String that is the API-Key")
+    parser.add_argument('--timeout', default=5, type=int, help="timeout in hours (Default is 5 hours) ")
     args, extras = parser.parse_known_args()
 #############
+    time_start =  datetime.datetime.now()
     folder_name = "default"
     project_id = args.project_id
     if args.run_id is not None:
@@ -424,6 +442,9 @@ def main():
 
 # for each file in input JSON, create data + expose temporary AWS creds
     for files in data:
+        time_duration = datetime.datetime.now() - time_start
+        if time_duration.seconds > ( args.timeout * 3600 ):
+            raise ValueError("Job is taking too long .... exiting!")
         path_split = files['path'].split('/')
         paths = []
         num_hits = 0
@@ -477,12 +498,12 @@ def main():
             metadata = return_filemetadata(args.metadata_table)
         ### add in logic to  on whether to rename FASTQs ####
         if args.metadata_table is None or foi not in metadata.keys():
-            foi_id  = create_data(my_api_key,project_name, foi, "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] + foi )
-            foi_md5_id = create_data(my_api_key,project_name, foi_md5, "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] + foi_md5)
+            foi_id  = create_data(my_api_key,project_name, foi, "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] )
+            # foi_md5_id = create_data(my_api_key,project_name, foi_md5, "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1])
             download_data_from_url(download_url,output_name=foi)
         else:
-            foi_id  = create_data(my_api_key,project_name, metadata[foi], "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] + metadata[foi] )
-            foi_md5_id = create_data(my_api_key,project_name, metadata[foi]+".md5sum", "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1] +  metadata[foi]+".md5sum")
+            foi_id  = create_data(my_api_key,project_name, metadata[foi], "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1])
+            # foi_md5_id = create_data(my_api_key,project_name, metadata[foi]+".md5sum", "FILE", folder_id=folder_id,project_id=project_id,filepath="/" + paths[-1])
             download_data_from_url(download_url, output_name=metadata[foi])
             foi = metadata[foi]
             foi_md5 = f"{foi}.md5sum"
@@ -490,9 +511,9 @@ def main():
         get_md5_sum(foi)
 
     # upload file and md5sum to ICA
-        creds = get_temporary_credentials(my_api_key,project_name, foi_md5_id,project_id=project_id)
-        #set_temp_credentials(creds)
-        upload_file(foi_md5,creds)
+        # creds = get_temporary_credentials(my_api_key,project_name, foi_md5_id,project_id=project_id)
+        # set_temp_credentials(creds)
+        # upload_file(foi_md5,creds)
 
         creds = get_temporary_credentials(my_api_key,project_name, foi_id,project_id=project_id)
         #set_temp_credentials(creds)
@@ -508,11 +529,14 @@ def main():
         md5_confirmation = confirm_md5sum(foi, bucketname, key_prefix,creds)
         if md5_confirmation is False:
             raise ValueError(f"Issue confirming md5sum for {foi}")
+        ######## add verbosity
+        dt = str(datetime.datetime.now())
+        sys.stderr.write(dt  + " Finished transferring: "  + files['path'] + "\n")
     # remove file and md5sum file once we've confirmed the checksums
-        remove_file = "rm -rf " + foi
-        os.system(remove_file)
-        remove_md5_file = "rm -rf " + foi_md5
-        os.system(remove_md5_file)
+        #ßremove_file = "rm -rf " + foi
+        #os.system(remove_file)
+        #remove_md5_file = "rm -rf " + foi_md5
+        #os.system(remove_md5_file)
     #################
     # write out parameter options summary
     transfer_options_summary = "transfer_options_summary.json"

@@ -339,7 +339,7 @@ def main():
         if args.metadata_table is None or foi not in metadata.keys():
             foi_id = create_data(my_api_key, project_name, foi, "FILE", folder_id=folder_id)
             foi_md5_id = create_data(my_api_key, project_name, foi_md5, "FILE", folder_id=folder_id)
-            download_data_from_url(download_url)
+            download_data_from_url(download_url,output_name=foi)
         else:
             foi_id = create_data(my_api_key, project_name, metadata[foi], "FILE", folder_id=folder_id)
             foi_md5_id = create_data(my_api_key, project_name, metadata[foi] + ".md5sum", "FILE", folder_id=folder_id)
