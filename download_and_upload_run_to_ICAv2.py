@@ -290,7 +290,9 @@ def download_data_from_url(download_url,output_name=None):
         command_base.append(output_name)
     command_base.append(f"{download_url}")
     command_str = " ".join(command_base)
-    os.system(command_str)
+    download_done = os.system(command_str)
+    while download_done != 0:
+        download_done = os.system(command_str)
     return print(f"Downloading from {download_url}")
 
 def set_temp_credentials(credential_json):
