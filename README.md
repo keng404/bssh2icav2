@@ -5,7 +5,7 @@
 # CWL for the [bssh2icav2 tool](https://github.com/keng404/bssh2icav2/blob/master/bssh2icav2.cwl)
 # figures for setting up a pipeline that uses this tool can be found [here](https://github.com/keng404/bssh2icav2/blob/master/bssh2icav2.pipeline_diagram.png), [here](https://github.com/keng404/bssh2icav2/blob/master/bssh2icav2.tool_parameters.pt1.png), and [here](https://github.com/keng404/bssh2icav2/blob/master/bssh2icav2.tool_parameters.pt2.png)
 
-**current image** keng404/bssh2icav2:1.1.3
+**current image** keng404/bssh2icav2:1.8.2
 
 # command line template
 ``` bash
